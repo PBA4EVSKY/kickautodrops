@@ -1,0 +1,72 @@
+name: Build Executables
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+        
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller
+        pip install -r requirements.txt
+    
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller index.spec
+    
+    - name: Create release archive (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        cd dist
+        7z a ../KickAutoDrops-windows.zip KickAutoDrops.exe example_config.ini locales/
+    
+    - name: Create release archive (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        cd dist
+        chmod +x index
+        tar -czf ../KickAutoDrops-linux.tar.gz KickAutoDrops example_config.ini locales/
+    
+    - name: Upload Windows artifact
+      if: runner.os == 'Windows'
+      uses: actions/upload-artifact@v3
+      with:
+        name: KickAutoDrops-windows
+        path: KickAutoDrops-windows.zip
+    
+    - name: Upload Linux artifact
+      if: runner.os == 'Linux'
+      uses: actions/upload-artifact@v3
+      with:
+        name: KickAutoDrops-linux
+        path: KickAutoDrops-linux.tar.gz
+    
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          KickAutoDrops-windows.zip
+          KickAutoDrops-linux.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
