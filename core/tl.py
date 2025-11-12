@@ -2,6 +2,7 @@ import json
 import os
 import configparser
 import shutil
+import sys
 
 def ensure_config():
     if not os.path.exists("config.ini"):
@@ -10,7 +11,7 @@ def ensure_config():
             print("[INFO] config.ini created from example_config.ini.")
         else:
             print("[ERROR] example_config.ini not found. Please create it manually.")
-            exit(1)
+            sys.exit(1)
 
 def load_config():
     config = configparser.ConfigParser()
