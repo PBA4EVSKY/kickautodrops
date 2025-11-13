@@ -79,7 +79,7 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          artifacts/myapp-windows/myapp-windows.zip
-          artifacts/myapp-linux/myapp-linux.tar.gz
+          artifacts/KickAutoDrops-windows.zip
+          artifacts/KickAutoDrops-linux.tar.gz
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
