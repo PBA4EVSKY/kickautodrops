@@ -75,7 +75,8 @@ async def get_stream_info(username: str) -> dict:
     result = {
         'is_live': False,
         'game_id': None,
-        'game_name': None
+        'game_name': None,
+        'live_stream_id': None
     }
     
     async with AsyncSession(impersonate="chrome120") as session:
@@ -89,6 +90,7 @@ async def get_stream_info(username: str) -> dict:
                 
                 # Получаем статус стрима
                 result['is_live'] = first_stream.get('is_live', False)
+                result['live_stream_id'] = first_stream.get('id')
                 
                 # Получаем информацию об игре
                 categories = first_stream.get('categories', [])
@@ -251,6 +253,17 @@ async def connection_channel(channel_id, username, category, token):
                         delta = now - last_report_time  # прошло с последнего апдейта
 
                         if delta >= 60:
+                            if current_info.get('live_stream_id'):
+                                await ws.send_json({
+                                    "type": "user_event",
+                                    "data": {
+                                        "message": {
+                                            "name": "tracking.user.watch.livestream",
+                                            "channel_id": channel_id,
+                                            "livestream_id": current_info['live_stream_id']
+                                        }
+                                    }
+                                })
                             # обновляем прогресс на количество секунд, прошедших за минуту
                             formatter.update_streamer_progress(username, 60)
                             last_report_time = now  # сбрасываем таймер

@@ -134,7 +134,7 @@ async def start_streamer_drops():
 
 
 async def show_menu():
-    # Проверяем наличие файла
+    print("Thanks Mixanicys")
     if not os.path.exists("current_views.json"):
         await create_file_tasks()
     else:
