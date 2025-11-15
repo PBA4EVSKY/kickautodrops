@@ -55,11 +55,15 @@ async def start_general_drops():
             if stream_ended:
                 print(tl.c["streamer_play_another_game"].format(username=username))
                 print(f"\n{tl.c['wait_for_new_streamer']}")
+                # check drops 
+                await view_controller.check_campaigns_claim_status()
                 await asyncio.sleep(60)
             else:
                 # Стрим завершился нормально (по таймеру)
                 print(tl.c["finish_view"].format(username=username))
                 print(f"\n{tl.c['waitcd300seconds']}")
+                # check drops 
+                await view_controller.check_campaigns_claim_status()
                 await asyncio.sleep(300)
                 
         except Exception as e:
@@ -131,11 +135,14 @@ async def start_streamer_drops():
         if not found_online:
             print(f"\n{tl.c['all_streamers_offline']}")
             print(f"\n{tl.c['wait_streamers_online']}")
+            # check drops 
+            await view_controller.check_campaigns_claim_status()
             rndstreamercategory = kick.get_random_stream_from_category(13)
             stream_ended = await view_controller.run_with_timer(
                     partial(view_controller.view_stream, rndstreamercategory['username'], 13), 
                     3600
                 )
+            
             await asyncio.sleep(600)
 
 

@@ -1,8 +1,10 @@
 import json
 from core import tl
+from core import kick
 import json
 
-def sync_drops_data(server_data, filepath="current_views.json"):
+# Обновленная версия sync_drops_data с campaign_id
+def sync_drops_data(server_data, cookies, filepath="current_views.json"):
     try:
         # Load local JSON
         print(f"Loading local JSON from {filepath}...")
@@ -19,21 +21,45 @@ def sync_drops_data(server_data, filepath="current_views.json"):
         if 'data' in server_data and isinstance(server_data['data'], list):
             
             for idx, campaign in enumerate(server_data['data']):
-                print(f"  Processing campaign {idx}: {campaign.get('name', 'Unnamed')}")
+                campaign_id = campaign.get('id')
+                print(f"  Processing campaign {idx}: {campaign.get('name', 'Unnamed')} (ID: {campaign_id})")
                 
                 if 'rewards' in campaign and isinstance(campaign['rewards'], list):
                     print(f"    Rewards found: {len(campaign['rewards'])}")
                     
                     for reward in campaign['rewards']:
-                        # Keep only claimed = True and progress = 1
-                        if reward.get('claimed') is True and reward.get('progress') == 1:
-                            server_rewards_map[reward['id']] = {
-                                'claimed': reward['claimed'],
-                                'progress': reward['progress'],
+                        reward_id = reward.get('id')
+                        progress = reward.get('progress')
+                        claimed = reward.get('claimed')
+                        
+                        # Если progress == 1 и claimed == False - нужно заклеймить
+                        if progress == 1 and claimed is False:
+                            print(f"⚠ Found unclaimed reward: {reward.get('name')} (ID: {reward_id})")
+                            
+                            # Клеймим награду
+                            claim_result = kick.claim_drop_reward(reward_id, campaign_id, cookies)
+                            
+                            if claim_result and claim_result.get('message') == 'Success':
+                                # Добавляем в map как заклейменную
+                                server_rewards_map[reward_id] = {
+                                    'claimed': True,
+                                    'progress': 1,
+                                    'external_id': reward.get('external_id'),
+                                    'name': reward.get('name')
+                                }
+                                print(f"✓ Successfully claimed and added: {reward.get('name')}")
+                            else:
+                                print(f"✗ Failed to claim: {reward.get('name')}")
+                        
+                        # Если уже claimed = True и progress = 1 - просто обновляем локальный JSON
+                        elif claimed is True and progress == 1:
+                            server_rewards_map[reward_id] = {
+                                'claimed': claimed,
+                                'progress': progress,
                                 'external_id': reward.get('external_id'),
                                 'name': reward.get('name')
                             }
-                            print(f"✓ Added claimed reward: {reward.get('name')} (ID: {reward['id']})")
+                            print(f"✓ Added claimed reward: {reward.get('name')} (ID: {reward_id})")
         
         # Update local data
         updated_count = 0
@@ -41,9 +67,10 @@ def sync_drops_data(server_data, filepath="current_views.json"):
             for item in updated_data['data']['planned']:
                 item_id = item.get('id')
                 if item_id in server_rewards_map:
-                    item['claim'] = 1
-                    updated_count += 1
-                    print(f"✓ Updated drop ID: {item_id} (claim: 0 → 1)")
+                    if item.get('claim') != 1:
+                        item['claim'] = 1
+                        updated_count += 1
+                        print(f"✓ Updated drop ID: {item_id} (claim: 0 → 1)")
         
         print(f"\nTotal updated: {updated_count} drops")
         

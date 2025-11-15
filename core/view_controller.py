@@ -15,7 +15,7 @@ async def view_stream(username, category_id):
 async def check_campaigns_claim_status():
     cookies = cookies_manager.load_cookies("cookies.txt")
     kickdata = kick.get_drops_progress(cookies)
-    formatter.sync_drops_data(kickdata)
+    formatter.sync_drops_data(kickdata, cookies)
 
 async def sleeping_director_list(category_id, streamers):
     for username in streamers:
