@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>KickDropMiner Web UI - Modern</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+      body { background: #161827; color: #e0e0e0; font-family: 'Inter', 'Segoe UI', sans-serif; }
+      .select-section { margin-bottom: 2em; padding:1em; background: #24253e; border-radius: 12px; }
+      .status-indicator { font-weight:bold; color:#28c76f; }
+      .status-indicator.stopped { color: #c72f46; }
+      .log-panel { background: #181818; border-radius: 8px; padding: 1em; font-family: monospace; height: 280px; overflow-y: auto; margin-bottom:2em;}
+      .footer { text-align:center; margin-top:46px; color:#9fa3b1; }
+      .reward-row { border-bottom:1px solid #23273d; }
+      .reward-card { background: #23273d; border-radius:10px; margin-bottom:0.7em; padding:0.9em 1em; }
+      .reward-badge { font-weight:bold; border-radius:6px; padding:0.2em 0.7em; font-size:90%; display:inline-block;}
+      .claimed { background:#157347; color: #fff;}
+      .unclaimed { background:#c77826; color: #fff;}
+      .progress-bar { height:17px; background: #292b44; border-radius:8px; }
+      .progress-bar-inner { height:17px; border-radius:8px; background: #59e2b4; text-align:right; color:#292b44; font-weight:bold; transition:width 0.4s;}
+      .toggle-btn { cursor:pointer; font-size: 1em; border:none; background:none; color:#59e2b4;}
+    </style>
+</head>
+<body>
+<div class="container" style="max-width: 960px;">
+    <h2 class="mt-4 mb-3 fw-bold">KickDropMiner <span class="fw-light">Web UI</span></h2>
+    <div class="text-end mb-2">
+      <a href="/logout" class="btn btn-sm btn-outline-light">Logout</a>
+    </div>
+    <div class="select-section mb-3 row align-items-center">
+      <div class="col-md-6 mb-2 mb-md-0">
+        <label class="form-label fw-bold">Select Game:</label>
+        <select id="game-select" class="form-select">
+          {% for g in games %}
+            <option value="{{g.id}}" {% if current_game_id == g.id %}selected{% endif %}>{{g.name}}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label fw-bold">Select Drop Type:</label>
+        <select id="drop-type-select" class="form-select">
+          {% for val, disp in drop_types %}
+            <option value="{{val}}" {% if current_drop_type == val %}selected{% endif %}>{{disp}}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <h5 class="fw-bold mb-2">
+      Farmer Status: <span id="farmer-status" class="status-indicator">Checking...</span>
+      <button class="toggle-btn ms-2" onclick="toggleLogs()">
+        <span id="toggle-log-text">Show Logs</span>
+      </button>
+    </h5>
+    <div id="dashboard">
+      <h4 class="fw-bold mt-3 mb-3">Drop Progress & Rewards</h4>
+      <div id="drop-panel"></div>
+    </div>
+    <div id="log-panel-parent" style="display:none;">
+      <h5 class="fw-bold mb-2">Live Farmer Logs</h5>
+      <div class="log-panel" id="log-panel"></div>
+    </div>
+    <div class="footer">
+      made with love by StuXan
+    </div>
+</div>
+<script>
+let lastGame = "{{current_game_id}}";
+let lastDropType = "{{current_drop_type}}";
+let logsVisible = false;
+
+function postSelection() {
+  let gameId = document.getElementById('game-select').value;
+  let dropType = document.getElementById('drop-type-select').value;
+  fetch("/api/select", {
+    method: "POST",
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      game_id: gameId,
+      drop_type: dropType
+    })
+  }).then(r => r.json()).then(data => {
+    refreshDrops(data.drop_status);
+    lastGame = gameId;
+    lastDropType = dropType;
+  });
+}
+document.getElementById('game-select').addEventListener('change', postSelection);
+document.getElementById('drop-type-select').addEventListener('change', postSelection);
+
+function toggleLogs() {
+  logsVisible = !logsVisible;
+  document.getElementById("log-panel-parent").style.display = logsVisible ? "block" : "none";
+  document.getElementById("toggle-log-text").innerText = logsVisible ? "Hide Logs" : "Show Logs";
+}
+
+function refreshLogs() {
+    if (!logsVisible) return;
+    fetch('/api/logs').then(r => r.json()).then(d => {
+      let logs = d.logs.map(line => `<div>${line}</div>`).join('');
+      let panel = document.getElementById('log-panel');
+      panel.innerHTML = logs;
+      if (panel.scrollHeight - panel.clientHeight - panel.scrollTop < 20) {
+        panel.scrollTop = panel.scrollHeight;
+      }
+      let statusElem = document.getElementById('farmer-status');
+      if (d.status === "RUNNING") {
+        statusElem.textContent = "Running";
+        statusElem.classList.remove("stopped");
+        statusElem.classList.add("status-indicator");
+      } else {
+        statusElem.textContent = "Stopped";
+        statusElem.classList.remove("status-indicator");
+        statusElem.classList.add("stopped");
+      }
+    });
+}
+
+function refreshDrops(drops = null) {
+    function render(d) {
+      let html = '';
+      d.forEach(camp => {
+        html += `<div class="reward-card mb-1"><div class="fw-bold mb-1">${camp.name}</div>
+          <div>`;
+        camp.rewards.forEach(rw => {
+          let statusClass = rw.claimed ? 'claimed' : 'unclaimed';
+          let statusText = rw.claimed ? 'Claimed' : (rw.progress==1 ? 'Ready' : 'Unclaimed');
+          let progress = ((rw.progress||0)*100).toFixed(2);
+          html += `<div class="row reward-row align-items-center py-2">
+            <div class="col-3"><span class="reward-badge ${statusClass}">${statusText}</span></div>
+            <div class="col-5">${rw.name}</div>
+            <div class="col-2 text-end">${progress}%</div>
+            <div class="col-2">
+              <div class="progress-bar">
+                <div class="progress-bar-inner" style="width:${progress}%">${progress >= 45 ? progress+'%' : ''}</div>
+              </div>
+            </div>
+          </div>`;
+        });
+        html += `</div></div>`;
+      });
+      document.getElementById('drop-panel').innerHTML = html ? html : "<em>No data found.</em>";
+    }
+    if(drops) { render(drops); return; }
+    fetch('/api/drop_status').then(r=>r.json()).then(x => render(x.drop_status));
+}
+setInterval(()=>{refreshDrops();refreshLogs();}, 1500);
+window.onload = function() { refreshDrops(); };
+
+</script>
+</body>
+</html>

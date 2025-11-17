@@ -32,7 +32,8 @@ def get_all_campaigns():
     
     url = f'https://web.kick.com/api/v1/drops/campaigns'
     
-    response = requests.get(url, headers=headers, impersonate="chrome120")
+    proxy = tl.get_proxy()
+    response = requests.get(url, headers=headers, impersonate="chrome120", proxies=proxy)
     data = response.json()
     
     return data
@@ -45,16 +46,15 @@ def claim_drop_reward(reward_id, campaign_id, cookies, max_attempts=3):
     
     print(f"{tl.c['session_token_found']} {session_token[:30]}...")
     
-    # Данные для POST запроса
     payload = {
         "reward_id": reward_id,
         "campaign_id": campaign_id
     }
     
     for attempt in range(max_attempts):
-        s = requests.Session(impersonate="chrome120")
+        proxy = tl.get_proxy()
+        s = requests.Session(impersonate="chrome120", proxies=proxy)
         
-        # Устанавливаем cookies
         s.cookies.update(cookies)
         
         try:
@@ -106,7 +106,6 @@ def claim_drop_reward(reward_id, campaign_id, cookies, max_attempts=3):
     return None
 
 def get_drops_progress(cookies, max_attempts=3):
-    # Извлекаем session_token из cookies для Authorization
     session_token = cookies.get('session_token')
     if not session_token:
         print(f"{tl.c['session_token_notfound_in_cookies']}")
@@ -115,9 +114,9 @@ def get_drops_progress(cookies, max_attempts=3):
     print(f"{tl.c['session_token_found']} {session_token[:30]}...")
     
     for attempt in range(max_attempts):
-        s = requests.Session(impersonate="chrome120")
+        proxy = tl.get_proxy()
+        s = requests.Session(impersonate="chrome120", proxies=proxy)
         
-        # Устанавливаем cookies
         s.cookies.update(cookies)
         
         try:
@@ -162,10 +161,10 @@ def get_drops_progress(cookies, max_attempts=3):
 
 def get_random_stream_from_category(category_id: int, limit: int = 10) -> dict:
     headers = DEFAULT_HEADERS
-    # thanks mobile version site
     url = f'https://web.kick.com/api/v1/livestreams?limit={limit}&sort=viewer_count_desc&category_id={category_id}'
     
-    response = requests.get(url, headers=headers, impersonate="chrome120")
+    proxy = tl.get_proxy()
+    response = requests.get(url, headers=headers, impersonate="chrome120", proxies=proxy)
     data = response.json()
     
     result = {
@@ -173,12 +172,10 @@ def get_random_stream_from_category(category_id: int, limit: int = 10) -> dict:
         'channel_id': None
     }
     
-    # Проверяем, есть ли данные
     if data and 'data' in data:
         livestreams = data['data'].get('livestreams', [])
         
         if livestreams and len(livestreams) > 0:
-            # Выбираем случайный индекс от 1 до 4 (или до длины списка, если меньше)
             max_index = min(4, len(livestreams) - 1)
             random_index = random.randint(1, max_index) if max_index >= 1 else 0
             
@@ -202,20 +199,19 @@ async def get_stream_info(username: str) -> dict:
         'live_stream_id': None
     }
     
-    async with AsyncSession(impersonate="chrome120") as session:
+    proxy = tl.get_proxy()
+    async with AsyncSession(impersonate="chrome120", proxies=proxy) as session:
         try:
-            response = await session.get(url, headers=headers)
+            proxy = tl.get_proxy()
+            response = await session.get(url, proxies=proxy, headers=headers)
             data = response.json()
             
-            # Проверяем, есть ли данные
             if data and len(data) > 0:
                 first_stream = data[0]
                 
-                # Получаем статус стрима
                 result['is_live'] = first_stream.get('is_live', False)
                 result['live_stream_id'] = first_stream.get('id')
                 
-                # Получаем информацию об игре
                 categories = first_stream.get('categories', [])
                 if categories and len(categories) > 0:
                     result['game_id'] = categories[0].get('id')
@@ -228,7 +224,8 @@ async def get_stream_info(username: str) -> dict:
 def get_channel_id(channel_name, cookies=None):
     max_attempts = 3
     for attempt in range(max_attempts):
-        s = requests.Session(impersonate="chrome120")
+        proxy = tl.get_proxy()
+        s = requests.Session(impersonate="chrome120", proxies=proxy)
         
         if cookies:
             s.cookies.update(cookies)
@@ -236,7 +233,8 @@ def get_channel_id(channel_name, cookies=None):
         try:
             s.headers.update(DEFAULT_HEADERS)
             
-            r = s.get(f"https://kick.com/api/v2/channels/{channel_name}", timeout=10)
+            proxy = tl.get_proxy()
+            r = s.get(f"https://kick.com/api/v2/channels/{channel_name}", proxies=proxy, timeout=10)
             
             if r.status_code == 200:
                 channel_id = r.json().get("id")
@@ -255,7 +253,6 @@ def get_channel_id(channel_name, cookies=None):
 def get_token_with_cookies(cookies):
     max_attempts = 5
     
-    # Извлекаем session_token из cookies для Authorization
     session_token = cookies.get('session_token')
     if not session_token:
         print(f"{tl.c['session_token_notfound_in_cookies']}")
@@ -264,9 +261,9 @@ def get_token_with_cookies(cookies):
     print(f"{tl.c['session_token_found']} {session_token[:30]}...")
     
     for attempt in range(max_attempts):
-        s = requests.Session(impersonate="chrome120")
+        proxy = tl.get_proxy()
+        s = requests.Session(impersonate="chrome120", proxies=proxy)
         
-        # Устанавливаем cookies
         s.cookies.update(cookies)
         
         try:
@@ -291,7 +288,8 @@ def get_token_with_cookies(cookies):
                 'Priority': 'u=1, i'
             })
             
-            r = s.get('https://websockets.kick.com/viewer/v1/token', timeout=10)
+            proxy = tl.get_proxy()
+            r = s.get('https://websockets.kick.com/viewer/v1/token', proxies=proxy, timeout=10)
             
             if r.status_code == 200:
                 data = r.json()
@@ -334,7 +332,8 @@ async def connection_channel(channel_id, username, category, token):
                 print(f"{tl.c['streamer_offline'].format(username=username)}")
                 category_changed = True
                 break
-            async with AsyncSession(impersonate="chrome120") as session:
+            proxy = tl.get_proxy()
+            async with AsyncSession(proxies=proxy, impersonate="chrome120", verify=False) as session:
                 headers = DEFAULT_HEADERS
                 
                 ws = await session.ws_connect(
@@ -370,10 +369,9 @@ async def connection_channel(channel_id, username, category, token):
                         
                         delay = 11 + random.randint(2, 7)
                         print(f"⏳ Delay {delay}с")
-                        # Рандомная проверка категории и проверка онлайн стрима
                         rndgamecheck = random.randint(1,3)
                         now = time.time()
-                        delta = now - last_report_time  # прошло с последнего апдейта
+                        delta = now - last_report_time
 
                         if delta >= 60:
                             if current_info.get('live_stream_id'):
@@ -387,9 +385,8 @@ async def connection_channel(channel_id, username, category, token):
                                         }
                                     }
                                 })
-                            # обновляем прогресс на количество секунд, прошедших за минуту
                             formatter.update_streamer_progress(username, 60)
-                            last_report_time = now  # сбрасываем таймер
+                            last_report_time = now
                         if rndgamecheck == 2:
                             try:
                                 current_info = await get_stream_info(username)
@@ -397,13 +394,13 @@ async def connection_channel(channel_id, username, category, token):
                                     if category != current_info['game_id']:
                                         print(f"{tl.c['streamer_play_another_game'].format(username=username)}")
                                         formatter.update_streamer_progress(username, 60)
-                                        last_report_time = now  # сбрасываем таймер
+                                        last_report_time = now
                                         category_changed = True
                                         break
                                     if current_info['is_live'] == False:
                                         print(f"{tl.c['streamer_offline'].format(username=username)}")
                                         formatter.update_streamer_progress(username, 60)
-                                        last_report_time = now  # сбрасываем таймер
+                                        last_report_time = now
                                         category_changed = True
                                         break
                                     else:

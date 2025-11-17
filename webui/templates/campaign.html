@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ campaign.name }} | KickDropMiner</title>
+    <style>
+        body { font-family: sans-serif; margin: 2rem; }
+        th, td { padding: 0.4em 0.6em; border-bottom: 1px solid #eee; }
+        table { border-collapse: collapse; }
+    </style>
+</head>
+<body>
+    <h2>Campaign: {{ campaign.name }} [{{ campaign.category.name if campaign.category }}]</h2>
+    <a href="{{ url_for('home') }}">&laquo; Back to campaigns</a>
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+        <ul style="color:green">
+        {% for m in messages %}
+            <li>{{ m }}</li>
+        {% endfor %}
+        </ul>
+    {% endif %}
+    {% endwith %}
+
+    <p>
+      <b>Farming status:</b>
+      {% if progress and progress.data %}
+        {% for c in progress.data %}
+          Campaign: {{ c.name or c.id }}<br>
+          {% for r in c.rewards %}
+             - {{ r.name }}: {{ (r.progress * 100) if r.progress else 0 }}%, {% if r.claimed %}Claimed{% else %}Unclaimed{% endif %}<br>
+          {% endfor %}
+        {% endfor %}
+      {% endif %}
+    </p>
+
+    <h3>Rewards</h3>
+    <table>
+        <tr>
+            <th>Name</th>
+            <th>Required Units</th>
+            <th>Progress</th>
+            <th>Status</th>
+            <th>Claim</th>
+        </tr>
+        {% for reward in campaign.rewards %}
+        <tr>
+            <td>{{ reward.name }}</td>
+            <td>{{ reward.required_units }}</td>
+            <td>
+              {% if reward.progress is not none %}
+                {{ reward.progress * 100 }}%
+              {% else %}
+                -
+              {% endif %}
+            </td>
+            <td>
+              {% if reward.claimed %}
+                <span style="color:green;">Claimed</span>
+              {% else %}
+                <span style="color:orange;">Unclaimed</span>
+              {% endif %}
+            </td>
+            <td>
+                {% if reward.progress == 1 and not reward.claimed %}
+                <form method="post" action="{{ url_for('claim') }}">
+                    <input type="hidden" name="reward_id" value="{{ reward.id }}">
+                    <input type="hidden" name="campaign_id" value="{{ campaign.id }}">
+                    <button type="submit">Claim</button>
+                </form>
+                {% else %}
+                    -
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

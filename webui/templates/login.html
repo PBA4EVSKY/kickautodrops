@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>KickDropMiner - Login</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background:#161827; color:#e0e0e0; font-family: 'Inter', 'Segoe UI', sans-serif; }
+    .login-box { max-width:350px;margin:120px auto 0 auto; background:#23273d; border-radius:11px; padding:2.2em 1.5em; }
+    .footer { text-align:center; margin-top:46px; color:#9fa3b1;}
+  </style>
+</head>
+<body>
+  <div class="login-box shadow">
+    <h3 class="mb-4 fw-bold text-center">KickDropMiner Login</h3>
+    <form method="post" action="/login">
+      <div class="mb-3">
+        <label>Password:</label>
+        <input type="password" name="password" class="form-control" autofocus required>
+      </div>
+      {% if error %}
+      <div class="mb-3 text-danger">{{error}}</div>
+      {% endif %}
+      <div>
+        <button type="submit" class="btn btn-primary w-100 fw-bold">Login</button>
+      </div>
+    </form>
+  </div>
+  <div class="footer">
+    made with love by StuXan
+  </div>
+</body>
+</html>
