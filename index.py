@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import traceback
 import os
+import time
 from core import tl
 from core import kick
 from core import view_controller
@@ -9,139 +10,88 @@ from core import formatter
 from core import cookies_manager
 from functools import partial
 
+# Log mode, can be set via UI toggle
+LOG_MODE_DETAILED = False
+
+def production_log(msg):
+    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
+
+def debug_log(msg):
+    if LOG_MODE_DETAILED:
+        print(f"[DEBUG {time.strftime('%H:%M:%S')}] {msg}")
+
 async def create_file_tasks():
+    production_log("Initializing campaign info from Kick.")
     listcamp = kick.get_all_campaigns()
     formatter.convert_drops_json(listcamp)
-
-async def start_general_drops(category_id):
-    while True:
-        print(f"\n{tl.c['search_streamers']}")
-        try:
-            rndstreamercategory = kick.get_random_stream_from_category(category_id)
-            if not rndstreamercategory:
-                print(f"\n{tl.c['unablefindstreamer']}")
-                print(f"\n{tl.c['waitcd300seconds']}")
-                await asyncio.sleep(300)
-                continue
-            username = rndstreamercategory['username']
-            remaining = await formatter.get_remaining_time(username)
-            print(tl.c["streamer_found"].format(username=username))
-            stream_info = await kick.get_stream_info(username)
-            if not stream_info['is_live']:
-                print(tl.c["streamer_offline_looking_another"].format(username=username))
-                await asyncio.sleep(30)
-                continue
-            if stream_info['game_id'] != category_id:
-                print(tl.c["streamer_play_another_game"].format(username=username))
-                await asyncio.sleep(30)
-                continue
-
-            print(tl.c["streamer_online"].format(username=username))
-            print(tl.c["starting_view_streamer"].format(remaining=remaining))
-            stream_ended = await view_controller.run_with_timer(
-                partial(view_controller.view_stream, username, category_id),
-                remaining + 120
-            )
-            if stream_ended:
-                print(tl.c["streamer_play_another_game"].format(username=username))
-                print(f"\n{tl.c['wait_for_new_streamer']}")
-                await view_controller.check_campaigns_claim_status()
-                await asyncio.sleep(60)
-            else:
-                print(tl.c["finish_view"].format(username=username))
-                print(f"\n{tl.c['waitcd300seconds']}")
-                await view_controller.check_campaigns_claim_status()
-                await asyncio.sleep(300)
-        except Exception as e:
-            print(tl.c["error_viewing"].format(e=e))
-            print(f"\n{tl.c['waitcd120seconds']}")
-            await asyncio.sleep(120)
+    production_log("Campaign info loaded.")
 
 async def start_streamer_drops(category_id):
+    production_log(f"Beginning targeted farming for category {category_id}. By StuXan")
     while True:
         streamers_data = formatter.collect_usernames()
-        found_online = False
-        stream_ended = False
-        print(f"\n{tl.c['search_streamers']}")
+        debug_log(f"Loaded streamers_data: {streamers_data}")
+        farmed_this_cycle = False
         for streamer in streamers_data:
             username = streamer['username']
             required_seconds = streamer['required_seconds']
             claim_status = streamer['claim']
-            if claim_status == 1:
-                print(tl.c["streamer_time_skip"].format(username=username))
+            if claim_status == 1 or required_seconds == 0:
+                debug_log(f"Skipping {username} (claimed or no time left).")
                 continue
-            remaining = await formatter.get_remaining_time(username)
-            if remaining <= 0:
-                print(tl.c["streamer_time_skip"].format(username=username))
-                continue
+            debug_log(f"Getting stream info for {username}...")
+            start_time = time.time()
             stream_info = await kick.get_stream_info(username)
-            if stream_info['is_live'] and stream_info['game_id'] == category_id:
-                print(tl.c["streamer_found"].format(username=username))
-                print(tl.c["starting_view_streamer"].format(remaining=remaining))
-                found_online = True
-                stream_ended = await view_controller.run_with_timer(
-                    partial(view_controller.view_stream, username, category_id),
-                    required_seconds + 120
-                )
-                if stream_ended:
-                    print(tl.c["streamer_play_another_game"].format(username=username))
-                    print(f"\n{tl.c['waitcd120seconds']}")
-                    await asyncio.sleep(120)
-                    break
-                else:
-                    print(tl.c['finish_view'].format(username=username))
-                    remaining_after = await formatter.get_remaining_time(username)
-                    print(remaining_after)
-                    if remaining_after > 0:
-                        print(f"\n{tl.c['waitcd120seconds']}")
-                        await asyncio.sleep(120)
-                        break
-                    else:
-                        print(tl.c['finish_view'].format(username=username))
-                        await asyncio.sleep(60)
-                        break
+            elapsed = time.time() - start_time
+            if elapsed > 5:
+                production_log(f"Stream info for {username} (took {elapsed:.1f}s): {stream_info}")
             else:
-                print(tl.c["streamer_offline"].format(username=username))
-        if not found_online:
-            print(f"\n{tl.c['all_streamers_offline']}")
-            print(f"\n{tl.c['wait_streamers_online']}")
-            await view_controller.check_campaigns_claim_status()
-            rndstreamercategory = kick.get_random_stream_from_category(category_id)
-            stream_ended = await view_controller.run_with_timer(
-                partial(view_controller.view_stream, rndstreamercategory['username'], category_id),
-                3600
-            )
-            await asyncio.sleep(600)
+                debug_log(f"Stream info for {username}: {stream_info}")
+            if stream_info['is_live'] and stream_info['game_id'] == category_id:
+                production_log(f"Started farming: {username} ({required_seconds // 60} min left, live now).")
+                await view_controller.run_with_timer(
+                    partial(view_controller.view_stream, username, category_id),
+                    required_seconds
+                )
+                farmed_this_cycle = True
+                await view_controller.check_campaigns_claim_status()
+                production_log(f"Finished farming: {username}. Syncing claim status.")
+                break
+            else:
+                production_log(f"Streamer unavailable: {username} (offline or wrong category). Skipped.")
+        if not farmed_this_cycle:
+            production_log("No targeted streamers are eligible at this time. Waiting 2 minutes before retry.")
+            await asyncio.sleep(120)
 
 async def run_farming(drop_mode, category_id):
-    print("Thanks Mixanicys")
+    production_log("By StuXan")
+    production_log("Farming system started.")
     if not os.path.exists("current_views.json"):
         await create_file_tasks()
-    else:
-        print(tl.c['file_view_found'])
-    await asyncio.sleep(3)
+    production_log("Campaign sync complete.")
+    await asyncio.sleep(0.5)
+    production_log("Checking targeted drops...")
     await view_controller.check_campaigns_claim_status()
+    production_log("Running farming main loop.")
     if drop_mode == "streamers":
-        print("\nLaunching: Streamers Drops mode")
+        production_log("Targeted Streamers farming mode enabled.")
         await start_streamer_drops(category_id)
     elif drop_mode == "general":
-        print("\nLaunching: General Drops mode")
+        production_log("General farming mode enabled.")
         await start_general_drops(category_id)
-    else:
-        print("\nUnknown drop mode requested:", drop_mode)
-        return
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--category', type=int, default=13, help="Kick.com category/game ID. Default 13 (Rust)")
     parser.add_argument('--mode', choices=["streamers", "general"], default="streamers",
                         help="Select drop mode: streamers or general")
+    parser.add_argument('--logs', choices=["prod", "debug"], default="prod", help="Choose log verbosity: prod or debug")
     args = parser.parse_args()
-    # Pass args.category where needed (see below)
+    LOG_MODE_DETAILED = (args.logs == "debug")
     try:
         asyncio.run(run_farming(args.mode, args.category))
     except KeyboardInterrupt:
-        print(f"\n\n{tl.c['exit_script']}")
+        production_log("Farming stopped by user.")
     except Exception as e:
-        print(f"\n{tl.c['critical_error'].format(e=e)}")
+        production_log(f"Critical error: {e}")
         traceback.print_exc()

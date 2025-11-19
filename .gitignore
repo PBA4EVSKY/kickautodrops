@@ -7,7 +7,9 @@ __pycache__/
 *.so
 
 *.txt
-*.json
+*.db
+current_views.json
+config.ini
 
 # Distribution / packaging
 .Python

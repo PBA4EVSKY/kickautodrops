@@ -1,151 +1,94 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>KickDropMiner Web UI - Modern</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-      body { background: #161827; color: #e0e0e0; font-family: 'Inter', 'Segoe UI', sans-serif; }
-      .select-section { margin-bottom: 2em; padding:1em; background: #24253e; border-radius: 12px; }
-      .status-indicator { font-weight:bold; color:#28c76f; }
-      .status-indicator.stopped { color: #c72f46; }
-      .log-panel { background: #181818; border-radius: 8px; padding: 1em; font-family: monospace; height: 280px; overflow-y: auto; margin-bottom:2em;}
-      .footer { text-align:center; margin-top:46px; color:#9fa3b1; }
-      .reward-row { border-bottom:1px solid #23273d; }
-      .reward-card { background: #23273d; border-radius:10px; margin-bottom:0.7em; padding:0.9em 1em; }
-      .reward-badge { font-weight:bold; border-radius:6px; padding:0.2em 0.7em; font-size:90%; display:inline-block;}
-      .claimed { background:#157347; color: #fff;}
-      .unclaimed { background:#c77826; color: #fff;}
-      .progress-bar { height:17px; background: #292b44; border-radius:8px; }
-      .progress-bar-inner { height:17px; border-radius:8px; background: #59e2b4; text-align:right; color:#292b44; font-weight:bold; transition:width 0.4s;}
-      .toggle-btn { cursor:pointer; font-size: 1em; border:none; background:none; color:#59e2b4;}
-    </style>
-</head>
-<body>
-<div class="container" style="max-width: 960px;">
-    <h2 class="mt-4 mb-3 fw-bold">KickDropMiner <span class="fw-light">Web UI</span></h2>
-    <div class="text-end mb-2">
-      <a href="/logout" class="btn btn-sm btn-outline-light">Logout</a>
-    </div>
-    <div class="select-section mb-3 row align-items-center">
-      <div class="col-md-6 mb-2 mb-md-0">
-        <label class="form-label fw-bold">Select Game:</label>
-        <select id="game-select" class="form-select">
-          {% for g in games %}
-            <option value="{{g.id}}" {% if current_game_id == g.id %}selected{% endif %}>{{g.name}}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-6">
-        <label class="form-label fw-bold">Select Drop Type:</label>
-        <select id="drop-type-select" class="form-select">
-          {% for val, disp in drop_types %}
-            <option value="{{val}}" {% if current_drop_type == val %}selected{% endif %}>{{disp}}</option>
-          {% endfor %}
-        </select>
-      </div>
-    </div>
-    <h5 class="fw-bold mb-2">
-      Farmer Status: <span id="farmer-status" class="status-indicator">Checking...</span>
-      <button class="toggle-btn ms-2" onclick="toggleLogs()">
-        <span id="toggle-log-text">Show Logs</span>
-      </button>
-    </h5>
-    <div id="dashboard">
-      <h4 class="fw-bold mt-3 mb-3">Drop Progress & Rewards</h4>
-      <div id="drop-panel"></div>
-    </div>
-    <div id="log-panel-parent" style="display:none;">
-      <h5 class="fw-bold mb-2">Live Farmer Logs</h5>
-      <div class="log-panel" id="log-panel"></div>
-    </div>
-    <div class="footer">
-      made with love by StuXan
-    </div>
-</div>
-<script>
-let lastGame = "{{current_game_id}}";
-let lastDropType = "{{current_drop_type}}";
-let logsVisible = false;
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{{ t.get('app_title', 'KickDropMiner') }} • Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="topbar">
+        <div class="brand">
+          <div class="logo">KD</div>
+          <div class="title">{{ t.get('app_title', 'KickDropMiner') }}</div>
+        </div>
 
-function postSelection() {
-  let gameId = document.getElementById('game-select').value;
-  let dropType = document.getElementById('drop-type-select').value;
-  fetch("/api/select", {
-    method: "POST",
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      game_id: gameId,
-      drop_type: dropType
-    })
-  }).then(r => r.json()).then(data => {
-    refreshDrops(data.drop_status);
-    lastGame = gameId;
-    lastDropType = dropType;
-  });
-}
-document.getElementById('game-select').addEventListener('change', postSelection);
-document.getElementById('drop-type-select').addEventListener('change', postSelection);
+        <div class="controls">
+          <div class="selects">
+            <select id="game-select" aria-label="{{ t.get('select_game', 'Select game') }}">
+              {% for g in games %}
+              <option value="{{ g.id }}" {% if g.id == current_game_id %}selected{% endif %}>{{ g.name }}</option>
+              {% endfor %}
+            </select>
 
-function toggleLogs() {
-  logsVisible = !logsVisible;
-  document.getElementById("log-panel-parent").style.display = logsVisible ? "block" : "none";
-  document.getElementById("toggle-log-text").innerText = logsVisible ? "Hide Logs" : "Show Logs";
-}
+            <select id="mode-select" aria-label="{{ t.get('select_mode', 'Select mode') }}">
+              {% for key, label in drop_types %}
+              <option value="{{ key }}" {% if key == current_drop_type %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
 
-function refreshLogs() {
-    if (!logsVisible) return;
-    fetch('/api/logs').then(r => r.json()).then(d => {
-      let logs = d.logs.map(line => `<div>${line}</div>`).join('');
-      let panel = document.getElementById('log-panel');
-      panel.innerHTML = logs;
-      if (panel.scrollHeight - panel.clientHeight - panel.scrollTop < 20) {
-        panel.scrollTop = panel.scrollHeight;
-      }
-      let statusElem = document.getElementById('farmer-status');
-      if (d.status === "RUNNING") {
-        statusElem.textContent = "Running";
-        statusElem.classList.remove("stopped");
-        statusElem.classList.add("status-indicator");
-      } else {
-        statusElem.textContent = "Stopped";
-        statusElem.classList.remove("status-indicator");
-        statusElem.classList.add("stopped");
-      }
-    });
-}
+            <button id="apply-btn" class="btn">{{ t.get('apply', 'Apply') }}</button>
+          </div>
 
-function refreshDrops(drops = null) {
-    function render(d) {
-      let html = '';
-      d.forEach(camp => {
-        html += `<div class="reward-card mb-1"><div class="fw-bold mb-1">${camp.name}</div>
-          <div>`;
-        camp.rewards.forEach(rw => {
-          let statusClass = rw.claimed ? 'claimed' : 'unclaimed';
-          let statusText = rw.claimed ? 'Claimed' : (rw.progress==1 ? 'Ready' : 'Unclaimed');
-          let progress = ((rw.progress||0)*100).toFixed(2);
-          html += `<div class="row reward-row align-items-center py-2">
-            <div class="col-3"><span class="reward-badge ${statusClass}">${statusText}</span></div>
-            <div class="col-5">${rw.name}</div>
-            <div class="col-2 text-end">${progress}%</div>
-            <div class="col-2">
-              <div class="progress-bar">
-                <div class="progress-bar-inner" style="width:${progress}%">${progress >= 45 ? progress+'%' : ''}</div>
-              </div>
+          <div class="buttons">
+            <button id="farmer-toggle" class="btn primary">{{ t.get('stop', 'Stop') if farmer_status == 'RUNNING' else t.get('start', 'Start') }}</button>
+            <button id="refresh" class="btn">{{ t.get('refresh', 'Refresh') }}</button>
+            <button id="theme-toggle" class="btn icon">🌓</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="main">
+        <section class="left">
+          <div class="card status-card">
+            <div class="card-row">
+              <div class="card-title">{{ t.get('overall_progress', 'Overall Progress') }}</div>
+              <div id="farmer-state" class="muted small">{{ farmer_status }}</div>
             </div>
-          </div>`;
-        });
-        html += `</div></div>`;
-      });
-      document.getElementById('drop-panel').innerHTML = html ? html : "<em>No data found.</em>";
-    }
-    if(drops) { render(drops); return; }
-    fetch('/api/drop_status').then(r=>r.json()).then(x => render(x.drop_status));
-}
-setInterval(()=>{refreshDrops();refreshLogs();}, 1500);
-window.onload = function() { refreshDrops(); };
+            <div id="campaigns-list" class="campaigns-grid">
+              <div class="muted small">{{ t.get('loading_campaigns', 'Loading campaigns…') }}</div>
+            </div>
+          </div>
 
-</script>
-</body>
+          <div class="card streamers-card">
+            <div class="card-title">{{ t.get('targeted_streamers', 'Targeted Streamers') }}</div>
+            <div id="streamers-list" class="list">
+              <div class="muted small">{{ t.get('loading_streamers', 'Loading streamers…') }}</div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="right">
+          <div class="card logs-card">
+            <div class="card-title">{{ t.get('farmer_logs', 'Farmer Logs') }}</div>
+            <div id="logs" class="logs">{{ t.get('loading_logs', 'Loading logs…') }}</div>
+            <div class="logs-actions">
+              <button id="clear-logs" class="btn">{{ t.get('clear', 'Clear') }}</button>
+              <button id="download-logs" class="btn">{{ t.get('download', 'Download') }}</button>
+            </div>
+          </div>
+
+          <div class="card control-card">
+            <div class="card-title">{{ t.get('quick_info', 'Quick Info') }}</div>
+            <div class="info-row"><span class="muted">{{ t.get('farmer', 'Farmer') }}</span><strong id="farmer-quick">{{ farmer_status }}</strong></div>
+            <div class="info-row"><span class="muted">{{ t.get('selected_game', 'Selected Game') }}</span><strong id="selected-game">{{ games[0].name if games else '—' }}</strong></div>
+            <div class="info-row"><span class="muted">{{ t.get('mode', 'Mode') }}</span><strong id="selected-mode">{{ current_drop_type }}</strong></div>
+          </div>
+        </aside>
+      </main>
+
+      <footer class="footer">
+        {{ t.get('made_with', 'Made with') }} <span class="heart">♥</span> {{ t.get('by', 'by') }} StuXan
+      </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+    <script>
+      const initialFarmerStatus = "{{ farmer_status }}";
+      document.getElementById('farmer-state').textContent = initialFarmerStatus;
+      window.__INITIAL_GAME_ID = "{{ current_game_id }}";
+      window.__INITIAL_MODE = "{{ current_drop_type }}";
+    </script>
+  </body>
 </html>
