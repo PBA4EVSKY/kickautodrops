@@ -21,8 +21,14 @@ def sync_drops_data(server_data, cookies, filepath="current_views.json"):
         if 'data' in server_data and isinstance(server_data['data'], list):
             
             for idx, campaign in enumerate(server_data['data']):
+                # Пропускаем кампании со статусом "expired"
+                status = campaign.get('status')
+                if status == 'expired':
+                    print(f"  Skipping expired campaign {idx}: {campaign.get('name', 'Unnamed')} (ID: {campaign.get('id')})")
+                    continue
+                
                 campaign_id = campaign.get('id')
-                print(f"  Processing campaign {idx}: {campaign.get('name', 'Unnamed')} (ID: {campaign_id})")
+                print(f"  Processing campaign {idx}: {campaign.get('name', 'Unnamed')} (ID: {campaign_id}) [Status: {status}]")
                 
                 if 'rewards' in campaign and isinstance(campaign['rewards'], list):
                     print(f"    Rewards found: {len(campaign['rewards'])}")
@@ -105,11 +111,15 @@ def convert_drops_json(drops_data):
         return result
     
     for campaign in drops_data['data']:
+        # Пропускаем кампании со статусом "expired"
+        status = campaign.get('status')
+        if status == 'expired':
+            continue
+            
         category_id = campaign.get('category', {}).get('id')
         
         if category_id is None:
             continue
-        
         
         # Проверяем наличие channels
         channels = campaign.get('channels', [])
@@ -142,18 +152,21 @@ def convert_drops_json(drops_data):
             # Считаем общее количество required_units из всех rewards
             total_required_units = 0
             rewards = campaign.get('rewards', [])
+            reward_id = None
             
             for reward in rewards:
                 required_units = reward.get('required_units', 0)
                 total_required_units += required_units
-                reward_id = reward.get('id')
+                if reward_id is None:  # Берем ID первой награды или кампании
+                    reward_id = reward.get('id')
+                    
             planned_item = {
                 "category_id": category_id,
                 "type": 1,
                 "claim": 0,
                 "usernames": usernames,
                 "required_units": total_required_units,
-                "id": reward_id  # ID кампании
+                "id": reward_id
             }
             result['data']['planned'].append(planned_item)
     
