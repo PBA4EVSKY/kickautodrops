@@ -1,4 +1,6 @@
 import asyncio
+import os
+import configparser
 from core import tl
 from core import cookies_manager
 from core import kick
@@ -12,10 +14,17 @@ async def view_stream(username, category_id):
     status = await kick.connection_channel(streamerid, username, category_id, token)
     return status
 
+def checkautoclaim_config():
+    config = configparser.ConfigParser()
+    config.read("config.ini", encoding="utf-8")
+    return config["general"].getboolean("autoclaimdrops")
+
 async def check_campaigns_claim_status():
-    cookies = cookies_manager.load_cookies("cookies.txt")
-    kickdata = kick.get_drops_progress(cookies)
-    formatter.sync_drops_data(kickdata, cookies)
+    config_status = checkautoclaim_config()
+    if config_status == True:
+        cookies = cookies_manager.load_cookies("cookies.txt")
+        kickdata = kick.get_drops_progress(cookies)
+        formatter.sync_drops_data(kickdata, cookies)
 
 async def sleeping_director_list(category_id, streamers):
     for username in streamers:
