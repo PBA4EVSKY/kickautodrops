@@ -20,11 +20,9 @@ def checkautoclaim_config():
     return config["general"].getboolean("autoclaimdrops")
 
 async def check_campaigns_claim_status():
-    config_status = checkautoclaim_config()
-    if config_status == True:
-        cookies = cookies_manager.load_cookies("cookies.txt")
-        kickdata = kick.get_drops_progress(cookies)
-        formatter.sync_drops_data(kickdata, cookies)
+    cookies = cookies_manager.load_cookies("cookies.txt")
+    kickdata = kick.get_drops_progress(cookies)
+    formatter.sync_drops_data(kickdata, cookies)
 
 async def sleeping_director_list(category_id, streamers):
     for username in streamers:

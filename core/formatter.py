@@ -1,6 +1,7 @@
 import json
 from core import tl
 from core import kick
+from core import view_controller
 import json
 
 # Обновленная версия sync_drops_data с campaign_id
@@ -43,19 +44,21 @@ def sync_drops_data(server_data, cookies, filepath="current_views.json"):
                             print(f"⚠ Found unclaimed reward: {reward.get('name')} (ID: {reward_id})")
                             
                             # Клеймим награду
-                            claim_result = kick.claim_drop_reward(reward_id, campaign_id, cookies)
-                            
-                            if claim_result and claim_result.get('message') == 'Success':
-                                # Добавляем в map как заклейменную
-                                server_rewards_map[reward_id] = {
-                                    'claimed': True,
-                                    'progress': 1,
-                                    'external_id': reward.get('external_id'),
-                                    'name': reward.get('name')
-                                }
-                                print(f"✓ Successfully claimed and added: {reward.get('name')}")
-                            else:
-                                print(f"✗ Failed to claim: {reward.get('name')}")
+                            config_status = view_controller.checkautoclaim_config()
+                            if config_status == True:
+                                claim_result = kick.claim_drop_reward(reward_id, campaign_id, cookies)
+                                
+                                if claim_result and claim_result.get('message') == 'Success':
+                                    # Добавляем в map как заклейменную
+                                    server_rewards_map[reward_id] = {
+                                        'claimed': True,
+                                        'progress': 1,
+                                        'external_id': reward.get('external_id'),
+                                        'name': reward.get('name')
+                                    }
+                                    print(f"✓ Successfully claimed and added: {reward.get('name')}")
+                                else:
+                                    print(f"✗ Failed to claim: {reward.get('name')}")
                         
                         # Если уже claimed = True и progress = 1 - просто обновляем локальный JSON
                         elif claimed is True and progress == 1:
