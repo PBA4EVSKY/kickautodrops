@@ -34,6 +34,7 @@ class DashboardScreen(Screen):
     paused: bool = False
     start_time: float | None = None
     farm_task: asyncio.Task | None = None
+    _active_username: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -59,7 +60,10 @@ class DashboardScreen(Screen):
         log = self.query_one("#event-log", EventLog)
         log.add_event(event.type.name, event.message)
 
-        # Route specific events to panels
+        # Ignore state-mutating events when not actively farming
+        if not self.farming or self.paused:
+            return
+
         streamer = self.query_one("#streamer-panel", StreamerPanel)
 
         if event.data:
@@ -67,15 +71,20 @@ class DashboardScreen(Screen):
                 streamer.heartbeat_count += 1
             if event.data.get("category_changed"):
                 streamer.is_live = False
+                streamer.ws_state = "disconnected"
             if event.data.get("streamer_offline"):
                 streamer.is_live = False
                 streamer.ws_state = "disconnected"
 
         if event.type in (events.EventType.PROGRESS, events.EventType.DROP_STATUS):
-            self._refresh_progress()
+            self._refresh_progress(self._active_username)
 
-    def _refresh_progress(self) -> None:
-        """Reload progress from current_views.json and update panel."""
+    def _refresh_progress(self, username: str | None = None) -> None:
+        """Reload progress from current_views.json and update panel.
+
+        When *username* is given, the progress bar targets that streamer's
+        remaining time.  Otherwise the bar shows the first pending item.
+        """
         if not os.path.exists("current_views.json"):
             return
         progress = self.query_one("#progress-panel", ProgressPanel)
@@ -89,15 +98,24 @@ class DashboardScreen(Screen):
             progress.pending_count = pending
             progress.ready_count = 0
 
-            # Build progress bar for first active streamer
-            for item in planned:
-                if item.get("claim") == 0:
-                    remaining = item.get("required_units", 0)
-                    if remaining > 0:
-                        # Estimate total from remaining (imperfect but usable)
-                        total = remaining * 1.25  # rough estimate
-                        progress.progress_text = progress.render_progress_bar(remaining, total)
+            # Build progress bar for the active streamer, or first pending
+            if username:
+                for item in planned:
+                    if item.get("type") == 1 and item.get("usernames") and username in item["usernames"]:
+                        remaining = item.get("required_units", 0)
+                        if remaining > 0:
+                            total = remaining * 1.25
+                            progress.progress_text = progress.render_progress_bar(remaining, total)
+                            progress.pending_count = 1  # show single streamer progress
                         break
+            else:
+                for item in planned:
+                    if item.get("claim") == 0:
+                        remaining = item.get("required_units", 0)
+                        if remaining > 0:
+                            total = remaining * 1.25
+                            progress.progress_text = progress.render_progress_bar(remaining, total)
+                            break
         except Exception:
             pass
 
@@ -178,6 +196,7 @@ class DashboardScreen(Screen):
         mode_panel = self.query_one("#mode-panel", ModePanel)
         streamer = self.query_one("#streamer-panel", StreamerPanel)
         streamer.ws_state = "connecting"
+        streamer.heartbeat_count = 0
 
         if mode_panel.current_mode == "streamer":
             self.farm_task = asyncio.create_task(self._farm_streamer())
@@ -189,9 +208,11 @@ class DashboardScreen(Screen):
         if self.farm_task and not self.farm_task.done():
             self.farm_task.cancel()
         self.farming = False
+        self._active_username = None
         try:
             streamer = self.query_one("#streamer-panel", StreamerPanel)
             streamer.ws_state = "disconnected"
+            streamer.heartbeat_count = 0
         except Exception:
             pass
 
@@ -223,10 +244,13 @@ class DashboardScreen(Screen):
                 stream_info = await kick.get_stream_info(username)
                 if stream_info.get("is_live") and stream_info.get("game_id") == 13:
                     found_online = True
+                    self._active_username = username
                     streamer_panel.username = username
                     streamer_panel.is_live = True
                     streamer_panel.game_name = "Rust"
                     streamer_panel.ws_state = "connected"
+                    streamer_panel.heartbeat_count = 0
+                    self._refresh_progress(username)
 
                     stream_ended = await view_controller.run_with_timer(
                         partial(view_controller.view_stream, username, 13),
@@ -243,7 +267,7 @@ class DashboardScreen(Screen):
                         break
                     else:
                         await view_controller.check_campaigns_claim_status()
-                        self._refresh_progress()
+                        self._refresh_progress(username)
                         await asyncio.sleep(60)
                         break
                 else:
@@ -278,9 +302,12 @@ class DashboardScreen(Screen):
                 await asyncio.sleep(30)
                 continue
 
+            self._active_username = username
             streamer_panel.is_live = True
             streamer_panel.game_name = "Rust"
             streamer_panel.ws_state = "connected"
+            streamer_panel.heartbeat_count = 0
+            self._refresh_progress(username)
 
             remaining = await formatter.get_remaining_time(username)
             events.emit(events.EventType.INFO, tl.c["starting_view_streamer"].format(remaining=remaining))
@@ -297,10 +324,10 @@ class DashboardScreen(Screen):
                 streamer_panel.is_live = False
                 streamer_panel.ws_state = "disconnected"
                 await view_controller.check_campaigns_claim_status()
-                self._refresh_progress()
+                self._refresh_progress(username)
                 await asyncio.sleep(60)
             else:
                 events.emit(events.EventType.SUCCESS, tl.c["finish_view"].format(username=username))
                 await view_controller.check_campaigns_claim_status()
-                self._refresh_progress()
+                self._refresh_progress(username)
                 await asyncio.sleep(300)
