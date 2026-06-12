@@ -8,9 +8,9 @@ def ensure_config():
     if not os.path.exists("config.ini"):
         if os.path.exists("example_config.ini"):
             shutil.copy("example_config.ini", "config.ini")
-            print("[INFO] config.ini created from example_config.ini.")
+            sys.stderr.write("[INFO] config.ini created from example_config.ini.\n")
         else:
-            print("[ERROR] example_config.ini not found. Please create it manually.")
+            sys.stderr.write("[ERROR] example_config.ini not found. Please create it manually.\n")
             sys.exit(1)
 
 def load_config():
@@ -18,7 +18,7 @@ def load_config():
     config.read("config.ini", encoding="utf-8")
 
     if "general" not in config or "language" not in config["general"]:
-        print("[WARN] 'language' not found in config.ini. Defaulting to 'en'.")
+        sys.stderr.write("[WARN] 'language' not found in config.ini. Defaulting to 'en'.\n")
         return "en"
 
     return config["general"]["language"]
@@ -29,7 +29,7 @@ def load_translation(lang_code: str):
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except FileNotFoundError:
-        print(f"[WARN] Translation file {lang_code}.json not found, using English.")
+        sys.stderr.write(f"[WARN] Translation file {lang_code}.json not found, using English.\n")
         with open(os.path.join("locales", "en.json"), "r", encoding="utf-8") as f:
             return json.load(f)
 

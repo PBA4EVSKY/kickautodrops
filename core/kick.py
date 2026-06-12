@@ -4,6 +4,7 @@ import random
 import traceback
 from core import formatter
 from core import tl
+from core import events
 from curl_cffi import requests, AsyncSession
 
 DEFAULT_HEADERS = {
@@ -40,10 +41,10 @@ def get_all_campaigns():
 def claim_drop_reward(reward_id, campaign_id, cookies, max_attempts=3):
     session_token = cookies.get('session_token')
     if not session_token:
-        print(f"{tl.c['session_token_notfound_in_cookies']}")
+        events.emit(events.EventType.ERROR, tl.c["session_token_notfound_in_cookies"])
         return None
-    
-    print(f"{tl.c['session_token_found']} {session_token[:30]}...")
+
+    events.emit(events.EventType.INFO, f"{tl.c['session_token_found']} {session_token[:30]}...")
     
     # Данные для POST запроса
     payload = {
@@ -78,41 +79,41 @@ def claim_drop_reward(reward_id, campaign_id, cookies, max_attempts=3):
                 'Priority': 'u=1, i'
             })
             
-            print(f"Attempting to claim reward {reward_id}... (attempt {attempt + 1}/{max_attempts})")
+            events.emit(events.EventType.INFO, f"Attempting to claim reward {reward_id}... (attempt {attempt + 1}/{max_attempts})")
             response = s.post('https://web.kick.com/api/v1/drops/claim', json=payload, timeout=10)
             
             if response.status_code == 200:
                 result = response.json()
                 if result.get('message') == 'Success':
-                    print(f"✓ Reward claimed successfully! ID: {result.get('data', {}).get('id')}")
+                    events.emit(events.EventType.SUCCESS, f"Reward claimed successfully! ID: {result.get('data', {}).get('id')}")
                     return result
                 else:
-                    print(f"⚠ Unexpected response: {result}")
+                    events.emit(events.EventType.WARNING, f"Unexpected response: {result}")
                     return result
             else:
-                print(f"✗ Error while claiming reward: {response.status_code}")
-                print(f"Response: {response.text}")
+                events.emit(events.EventType.ERROR, f"Error while claiming reward: {response.status_code}")
+                events.emit(events.EventType.ERROR, f"Response: {response.text}")
                 if attempt < max_attempts - 1:
-                    print("Trying again...")
+                    events.emit(events.EventType.INFO, "Trying again...")
                     
         except Exception as e:
-            print(f"✗ Error while claiming reward: {e}")
+            events.emit(events.EventType.ERROR, f"Error while claiming reward: {e}")
             if attempt < max_attempts - 1:
-                print("Trying again...")
+                events.emit(events.EventType.INFO, "Trying again...")
         finally:
             s.close()
     
-    print("Failed to claim reward after all attempts")
+    events.emit(events.EventType.ERROR, "Failed to claim reward after all attempts")
     return None
 
 def get_drops_progress(cookies, max_attempts=3):
     # Извлекаем session_token из cookies для Authorization
     session_token = cookies.get('session_token')
     if not session_token:
-        print(f"{tl.c['session_token_notfound_in_cookies']}")
+        events.emit(events.EventType.ERROR, tl.c["session_token_notfound_in_cookies"])
         return None
-    
-    print(f"{tl.c['session_token_found']} {session_token[:30]}...")
+
+    events.emit(events.EventType.INFO, f"{tl.c['session_token_found']} {session_token[:30]}...")
     
     for attempt in range(max_attempts):
         s = requests.Session(impersonate="chrome120")
@@ -146,19 +147,20 @@ def get_drops_progress(cookies, max_attempts=3):
             if response.status_code == 200:
                 return response.json()
             else:
-                print(f"✗ Error while requesting: {response.status_code}")
+                events.emit(events.EventType.ERROR, f"Error while requesting: {response.status_code}")
                 if attempt < max_attempts - 1:
-                    print("Trying again...")
-                    
+                    events.emit(events.EventType.INFO, "Trying again...")
+
         except Exception as e:
-            print(f"✗ Error while requesting: {e}")
+            events.emit(events.EventType.ERROR, f"Error while requesting: {e}")
             if attempt < max_attempts - 1:
-                print("Trying again...")
+                events.emit(events.EventType.INFO, "Trying again...")
         finally:
             s.close()
     
-    print("Failed to retrieve data after all attempts")
+    events.emit(events.EventType.ERROR, "Failed to retrieve data after all attempts")
     return None
+
 
 def get_random_stream_from_category(category_id: int, limit: int = 10) -> dict:
     headers = DEFAULT_HEADERS
@@ -221,9 +223,10 @@ async def get_stream_info(username: str) -> dict:
                     result['game_id'] = categories[0].get('id')
                     result['game_name'] = categories[0].get('name')
         except Exception as e:
-            print(f"{tl.c['error_getting_stream_info'].format(e=e)}")
-    
+            events.emit(events.EventType.ERROR, tl.c["error_getting_stream_info"].format(e=e))
+
     return result
+
 
 def get_channel_id(channel_name, cookies=None):
     max_attempts = 3
@@ -242,35 +245,36 @@ def get_channel_id(channel_name, cookies=None):
                 channel_id = r.json().get("id")
                 return channel_id
             else:
-                print(f"⚠ Status {r.status_code}, returning {attempt + 1}/{max_attempts}")
-                
+                events.emit(events.EventType.WARNING, f"Status {r.status_code}, retrying {attempt + 1}/{max_attempts}")
+
         except Exception as e:
-            print(f"❌ Error: {e}, returning {attempt + 1}/{max_attempts}")
-        
+            events.emit(events.EventType.ERROR, f"Error: {e}, retrying {attempt + 1}/{max_attempts}")
+
         time.sleep(2)
-    
-    print(f"{tl.c['error_getting_id_streamer_id']}")
+
+    events.emit(events.EventType.ERROR, tl.c["error_getting_id_streamer_id"])
     return None
+
 
 def get_token_with_cookies(cookies):
     max_attempts = 5
-    
+
     # Извлекаем session_token из cookies для Authorization
     session_token = cookies.get('session_token')
     if not session_token:
-        print(f"{tl.c['session_token_notfound_in_cookies']}")
+        events.emit(events.EventType.ERROR, tl.c["session_token_notfound_in_cookies"])
         return None
-    
-    print(f"{tl.c['session_token_found']} {session_token[:30]}...")
-    
+
+    events.emit(events.EventType.INFO, f"{tl.c['session_token_found']} {session_token[:30]}...")
+
     for attempt in range(max_attempts):
         s = requests.Session(impersonate="chrome120")
-        
+
         # Устанавливаем cookies
         s.cookies.update(cookies)
-        
+
         try:
-            print(f"\n[Returning {attempt + 1}/{max_attempts}] Request a token with cookies...")
+            events.emit(events.EventType.INFO, f"Requesting token with cookies... (attempt {attempt + 1}/{max_attempts})")
             
             s.headers.update({
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
@@ -297,27 +301,28 @@ def get_token_with_cookies(cookies):
                 data = r.json()
                 token = data.get("data", {}).get("token")
                 if token:
-                    print(f"{tl.c['token_received']}")
+                    events.emit(events.EventType.SUCCESS, tl.c["token_received"])
                     return token
                 else:
-                    print(f"{tl.c['token_notfound_in_reponse']}")
+                    events.emit(events.EventType.WARNING, tl.c["token_notfound_in_reponse"])
             else:
-                print(f"Status: {r.status_code}")
-                print(f"Answer: {r.text[:300]}")
+                events.emit(events.EventType.ERROR, f"Token request status: {r.status_code}")
+                events.emit(events.EventType.ERROR, f"Token response: {r.text[:300]}")
                 
         except requests.RequestException as e:
-            print(f"{tl.c['error_getting_token'].format(e=e)}")
+            events.emit(events.EventType.ERROR, tl.c["error_getting_token"].format(e=e))
         except Exception as e:
-            print(f"{tl.c['error_getting_token'].format(e=e)}")
-            traceback.print_exc()
+            events.emit(events.EventType.ERROR, tl.c["error_getting_token"].format(e=e))
+            events.emit(events.EventType.ERROR, traceback.format_exc())
         
         if attempt < max_attempts - 1:
             wait = 3 + attempt
-            print(f"{tl.c['retry_after'].format(wait=wait)}")
+            events.emit(events.EventType.INFO, tl.c["retry_after"].format(wait=wait))
             time.sleep(wait)
-    
-    print(f"{tl.c['error_token_all_attempts']}")
+
+    events.emit(events.EventType.ERROR, tl.c["error_token_all_attempts"])
     return None
+
 
 async def connection_channel(channel_id, username, category, token):
     max_retries = 10
@@ -329,9 +334,9 @@ async def connection_channel(channel_id, username, category, token):
 
     while retry_count < max_retries:
         try:
-            print(f"{tl.c['websocket_connect']}")
+            events.emit(events.EventType.CONNECTION, tl.c["websocket_connect"])
             if current_info['is_live'] == False:
-                print(f"{tl.c['streamer_offline'].format(username=username)}")
+                events.emit(events.EventType.WARNING, tl.c["streamer_offline"].format(username=username))
                 category_changed = True
                 break
             async with AsyncSession(impersonate="chrome120") as session:
@@ -342,7 +347,7 @@ async def connection_channel(channel_id, username, category, token):
                     headers=headers
                 )
                 
-                print(f"{tl.c['connection_successful']}")
+                events.emit(events.EventType.SUCCESS, tl.c["connection_successful"])
                 retry_count = 0
                 
                 counter = 0
@@ -353,23 +358,22 @@ async def connection_channel(channel_id, username, category, token):
                     try:
                         if counter % 2 == 0:
                             await ws.send_json({"type": "ping"})
-                            print(f"📤 ping")
+                            events.emit(events.EventType.INFO, "ping sent", data={"heartbeat": True})
                         else:
                             await ws.send_json({
                                 "type": "channel_handshake",
                                 "data": {"message": {"channelId": channel_id}}
                             })
-                            print(f"🤝 handshake (channel {channel_id})")
-                        
-                        
+                            events.emit(events.EventType.INFO, f"channel handshake (channel {channel_id})", data={"heartbeat": True})
+
+
                         try:
                             response = await asyncio.wait_for(ws.recv(), timeout=1.0)
-                            print(f"📥 Received: {response[:100]}...")
+                            events.emit(events.EventType.INFO, f"WS received: {response[:100]}...", data={"ws_message": True})
                         except asyncio.TimeoutError:
                             pass
                         
                         delay = 11 + random.randint(2, 7)
-                        print(f"⏳ Delay {delay}с")
                         # Рандомная проверка категории и проверка онлайн стрима
                         rndgamecheck = random.randint(1,3)
                         now = time.time()
@@ -395,42 +399,42 @@ async def connection_channel(channel_id, username, category, token):
                                 current_info = await get_stream_info(username)
                                 if current_info['game_id'] is not None:
                                     if category != current_info['game_id']:
-                                        print(f"{tl.c['streamer_play_another_game'].format(username=username)}")
+                                        events.emit(events.EventType.WARNING, tl.c["streamer_play_another_game"].format(username=username), data={"category_changed": True})
                                         formatter.update_streamer_progress(username, 60)
                                         last_report_time = now  # сбрасываем таймер
                                         category_changed = True
                                         break
                                     if current_info['is_live'] == False:
-                                        print(f"{tl.c['streamer_offline'].format(username=username)}")
+                                        events.emit(events.EventType.WARNING, tl.c["streamer_offline"].format(username=username), data={"streamer_offline": True})
                                         formatter.update_streamer_progress(username, 60)
                                         last_report_time = now  # сбрасываем таймер
                                         category_changed = True
                                         break
                                     else:
-                                        print(f"{tl.c['streamer_online'].format(username=username)}")
+                                        pass
                             except Exception as check_error:
-                                print(f"{tl.c['error_check_category'].format(check_error=check_error)}")
+                                events.emit(events.EventType.ERROR, tl.c["error_check_category"].format(check_error=check_error))
                         await asyncio.sleep(delay)
                         
                     except Exception as send_error:
-                        print(f"{tl.c['error_send'].format(send_error=send_error)}")
+                        events.emit(events.EventType.ERROR, tl.c["error_send"].format(send_error=send_error))
                         break
                 if category_changed:
                     return category_changed  
         except Exception as e:
             retry_count += 1
             error_msg = str(e)
-            print(f"\n ❌ Connection error (attempt {retry_count}/{max_retries})")
-            print(f" Детали: {error_msg}")
-            traceback.print_exc()
+            events.emit(events.EventType.ERROR, f"Connection error (attempt {retry_count}/{max_retries})")
+            events.emit(events.EventType.ERROR, f"Details: {error_msg}")
+            events.emit(events.EventType.ERROR, traceback.format_exc())
             if "403" in error_msg or "Refused" in error_msg:
-                print(f"{tl.c['need_update_cookies']}")
+                events.emit(events.EventType.ERROR, tl.c["need_update_cookies"])
                 break
-            
+
             if retry_count < max_retries:
                 wait = random.randint(5, 10)
-                print(f"{tl.c['retry_after'].format(wait=wait)}")
+                events.emit(events.EventType.INFO, tl.c["retry_after"].format(wait=wait))
                 await asyncio.sleep(wait)
             else:
-                print(f"{tl.c['max_attemtps']}")
+                events.emit(events.EventType.ERROR, tl.c["max_attemtps"])
                 break

@@ -5,6 +5,7 @@ from core import tl
 from core import cookies_manager
 from core import kick
 from core import formatter
+from core import events
 
 
 async def view_stream(username, category_id):
@@ -26,10 +27,10 @@ async def check_campaigns_claim_status():
 
 async def sleeping_director_list(category_id, streamers):
     for username in streamers:
-        print(tl.c["streamer_found"].format(username=username))
+        events.emit(events.EventType.INFO, tl.c["streamer_found"].format(username=username))
         status = await view_stream(username, category_id)
         if status == True:
-            print(tl.c["streamer_play_another_game"].format(username=username))
+            events.emit(events.EventType.WARNING, tl.c["streamer_play_another_game"].format(username=username))
             continue
         await asyncio.sleep(4)  # 2 секунды паузы
 
@@ -45,17 +46,17 @@ async def run_with_timer(coro_func, timeout_seconds: int):
     # Если сработал таймер
     if task_timer in done and not task_main.done():
         minutes = timeout_seconds // 60
-        print(tl.c["timer_finished"].format(minutes=minutes))
+        events.emit(events.EventType.INFO, tl.c["timer_finished"].format(minutes=minutes))
         task_main.cancel()
         try:
             await task_main
         except asyncio.CancelledError:
-            print(tl.c["timer_stop"])
+            events.emit(events.EventType.INFO, tl.c["timer_stop"])
 
     # Если основная задача закончилась раньше
     elif task_main in done and not task_timer.done():
-        print(tl.c["timer_task_early"])
+        events.emit(events.EventType.INFO, tl.c["timer_task_early"])
         task_timer.cancel()
 
-    print(tl.c["all_tasks_completed"])
+    events.emit(events.EventType.SUCCESS, tl.c["all_tasks_completed"])
 

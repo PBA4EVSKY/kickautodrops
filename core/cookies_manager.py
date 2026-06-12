@@ -1,5 +1,6 @@
 import traceback
 from core import tl
+from core import events
 from http.cookiejar import MozillaCookieJar
 
 def load_cookies(file_path="cookies.txt"):
@@ -12,16 +13,16 @@ def load_cookies(file_path="cookies.txt"):
             cookies_dict[cookie.name] = cookie.value
         
         if not cookies_dict:
-            print(tl.c["file_empty"].format(file_path=file_path))
+            events.emit(events.EventType.ERROR, tl.c["file_empty"].format(file_path=file_path))
             return None
-            
-        print(tl.c["cookies_loaded"].format(file_path=file_path))
+
+        events.emit(events.EventType.SUCCESS, tl.c["cookies_loaded"].format(file_path=file_path))
         return cookies_dict
         
     except FileNotFoundError:
-        print(tl.c["cookies_file_notfound"].format(file_path=file_path))
+        events.emit(events.EventType.ERROR, tl.c["cookies_file_notfound"].format(file_path=file_path))
         return None
     except Exception as e:
-        print(tl.c["cookies_error_load"].format(e=e))
-        traceback.print_exc()
+        events.emit(events.EventType.ERROR, tl.c["cookies_error_load"].format(e=e))
+        events.emit(events.EventType.ERROR, traceback.format_exc())
         return None
