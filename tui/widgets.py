@@ -47,7 +47,7 @@ class StreamerPanel(Container):
         yield Static("—", id="streamer-name")
         yield Static("○ OFFLINE", id="streamer-status")
         yield Static("🎮 —", id="streamer-game")
-        yield Static("WS: disconnected", id="streamer-ws")
+        yield Static("⚡disconnected ♡0", id="streamer-ws")
 
     def watch_username(self, name: str) -> None:
         self.query_one("#streamer-name", Static).update(name)
@@ -61,11 +61,11 @@ class StreamerPanel(Container):
 
     def watch_ws_state(self, state: str) -> None:
         ws = self.query_one("#streamer-ws", Static)
-        ws.update(f"WS: {state}  ❤ {self.heartbeat_count}")
+        ws.update(f"⚡{state} ♡{self.heartbeat_count}")
 
     def watch_heartbeat_count(self, count: int) -> None:
         ws = self.query_one("#streamer-ws", Static)
-        ws.update(f"WS: {self.ws_state}  ❤ {count}")
+        ws.update(f"⚡{self.ws_state} ♡{count}")
 
 
 class ProgressPanel(Container):
@@ -109,14 +109,14 @@ class ProgressPanel(Container):
         filled = int(bar_width * pct)
         empty = bar_width - filled
         bar = "█" * filled + "░" * empty
-        return f"{bar} {int(pct * 100)}%  {int(remaining_minutes)}m remaining"
+        return f"{bar} {int(pct * 100)}%  {int(remaining_minutes)}m left"
 
 
 class EventLog(RichLog):
     """Scrollable event log wrapping Textual's RichLog with color-coding."""
 
-    def __init__(self) -> None:
-        super().__init__(highlight=True, markup=True, max_lines=100)
+    def __init__(self, **kwargs) -> None:
+        super().__init__(highlight=True, markup=True, max_lines=100, **kwargs)
 
     def add_event(self, event_type_str: str, message: str) -> None:
         """Add a color-coded event to the log."""
