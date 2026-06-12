@@ -2,13 +2,13 @@ import json
 from core import tl
 from core import kick
 from core import view_controller
-import json
+from core import events
 
 # Обновленная версия sync_drops_data с campaign_id
 def sync_drops_data(server_data, cookies, filepath="current_views.json"):
     try:
         # Load local JSON
-        print(f"Loading local JSON from {filepath}...")
+        events.emit(events.EventType.INFO, f"Loading local JSON from {filepath}...")
         with open(filepath, 'r', encoding='utf-8') as f:
             local_data = json.load(f)
         
@@ -25,23 +25,22 @@ def sync_drops_data(server_data, cookies, filepath="current_views.json"):
                 # Пропускаем кампании со статусом "expired"
                 status = campaign.get('status')
                 if status == 'expired':
-                    print(f"  Skipping expired campaign {idx}: {campaign.get('name', 'Unnamed')} (ID: {campaign.get('id')})")
+                    events.emit(events.EventType.INFO, f"Skipping expired campaign: {campaign.get('name', 'Unnamed')}")
                     continue
                 
                 campaign_id = campaign.get('id')
-                print(f"  Processing campaign {idx}: {campaign.get('name', 'Unnamed')} (ID: {campaign_id}) [Status: {status}]")
+                events.emit(events.EventType.INFO, f"Processing campaign: {campaign.get('name', 'Unnamed')}")
                 
                 if 'rewards' in campaign and isinstance(campaign['rewards'], list):
-                    print(f"    Rewards found: {len(campaign['rewards'])}")
+                    events.emit(events.EventType.INFO, f"Rewards found: {len(campaign['rewards'])}")
                     
                     for reward in campaign['rewards']:
                         reward_id = reward.get('id')
                         progress = reward.get('progress')
                         claimed = reward.get('claimed')
                         
-                        # Если progress == 1 и claimed == False - нужно заклеймить
                         if progress == 1 and claimed is False:
-                            print(f"⚠ Found unclaimed reward: {reward.get('name')} (ID: {reward_id})")
+                            events.emit(events.EventType.DROP_STATUS, f"Found unclaimed reward: {reward.get('name')}")
                             
                             # Клеймим награду
                             config_status = view_controller.checkautoclaim_config()
@@ -56,11 +55,10 @@ def sync_drops_data(server_data, cookies, filepath="current_views.json"):
                                         'external_id': reward.get('external_id'),
                                         'name': reward.get('name')
                                     }
-                                    print(f"✓ Successfully claimed and added: {reward.get('name')}")
+                                    events.emit(events.EventType.SUCCESS, f"Claimed: {reward.get('name')}")
                                 else:
-                                    print(f"✗ Failed to claim: {reward.get('name')}")
-                        
-                        # Если уже claimed = True и progress = 1 - просто обновляем локальный JSON
+                                    events.emit(events.EventType.ERROR, f"Failed to claim: {reward.get('name')}")
+
                         elif claimed is True and progress == 1:
                             server_rewards_map[reward_id] = {
                                 'claimed': claimed,
@@ -68,9 +66,8 @@ def sync_drops_data(server_data, cookies, filepath="current_views.json"):
                                 'external_id': reward.get('external_id'),
                                 'name': reward.get('name')
                             }
-                            print(f"✓ Added claimed reward: {reward.get('name')} (ID: {reward_id})")
-        
-        # Update local data
+                            events.emit(events.EventType.DROP_STATUS, f"Already claimed: {reward.get('name')}")
+
         updated_count = 0
         if 'data' in updated_data and 'planned' in updated_data['data']:
             for item in updated_data['data']['planned']:
@@ -79,26 +76,25 @@ def sync_drops_data(server_data, cookies, filepath="current_views.json"):
                     if item.get('claim') != 1:
                         item['claim'] = 1
                         updated_count += 1
-                        print(f"✓ Updated drop ID: {item_id} (claim: 0 → 1)")
-        
-        print(f"\nTotal updated: {updated_count} drops")
-        
-        # Save updated data
-        print(f"Saving data to {filepath}...")
+                        events.emit(events.EventType.DROP_STATUS, f"Updated drop ID: {item_id}")
+
+        events.emit(events.EventType.SUCCESS, f"Total updated: {updated_count} drops")
+
+        events.emit(events.EventType.INFO, f"Saving data to {filepath}...")
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(updated_data, f, ensure_ascii=False, indent=4)
-        
-        print(f"✓ Data successfully saved to {filepath}")
+
+        events.emit(events.EventType.SUCCESS, f"Data saved to {filepath}")
         return True
-        
+
     except FileNotFoundError:
-        print(f"✗ Error: file {filepath} not found")
+        events.emit(events.EventType.ERROR, f"File not found: {filepath}")
         return False
     except json.JSONDecodeError as e:
-        print(f"✗ JSON read error: {e}")
+        events.emit(events.EventType.ERROR, f"JSON read error: {e}")
         return False
     except Exception as e:
-        print(f"✗ Synchronization error: {e}")
+        events.emit(events.EventType.ERROR, f"Synchronization error: {e}")
         return False
 
 
@@ -201,88 +197,84 @@ def collect_usernames(json_filename='current_views.json'):
 def update_streamer_progress(username: str, watched_seconds: int, json_filename='current_views.json', update_type: int = 1):
     # Конвертируем секунды в минуты
     watched_minutes = round(watched_seconds / 60.0, 1)
-    
+
     try:
         # Читаем JSON
         with open(json_filename, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        
+
         # Проходим по всем planned элементам
         for item in data['data']['planned']:
             # Обновление для general (type=2)
             if update_type == 2 and item.get('type') == 2:
                 current_units = round(float(item.get('required_units', 0)), 1)
                 new_units = round(max(0.0, current_units - watched_minutes), 1)
-                
+
                 item['required_units'] = new_units
-                
-                print(tl.c["general_progress"].format(
+
+                events.emit(events.EventType.PROGRESS, tl.c["general_progress"].format(
                     current_units=current_units,
                     new_units=new_units,
                     watched_minutes=watched_minutes
-                ))
-                
+                ), data={"type": "general", "new_units": new_units})
+
                 with open(json_filename, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
-                
+
                 return True
-            
+
             # Обновление для конкретного стримера (type=1)
             elif update_type == 1 and item.get('type') == 1 and 'usernames' in item and username in item['usernames']:
                 current_units = round(float(item.get('required_units', 0)), 1)
                 new_units = round(max(0.0, current_units - watched_minutes), 1)
-                
+
                 item['required_units'] = new_units
-                
-                print(tl.c["user_progress"].format(
+
+                events.emit(events.EventType.PROGRESS, tl.c["user_progress"].format(
                     username=username,
                     current_units=current_units,
                     new_units=new_units,
                     watched_minutes=watched_minutes
-                ))
-                
+                ), data={"type": "streamer", "username": username, "new_units": new_units})
+
                 with open(json_filename, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=4, ensure_ascii=False)
-                
+
                 return True
-        
+
         # Если стример не найден (type=1), пытаемся обновить general (type=2)
         if update_type == 1:
-            print(f"{tl.c['streamer_notfound_in_json_updating'].format(username=username)}")
+            events.emit(events.EventType.WARNING, tl.c["streamer_notfound_in_json_updating"].format(username=username))
             return update_streamer_progress(username, watched_seconds, json_filename, update_type=2)
         else:
-            print(f"{tl.c['general_type_2_notfound_in_json']}")
+            events.emit(events.EventType.ERROR, tl.c["general_type_2_notfound_in_json"])
             return False
-        
+
     except Exception as e:
-        print(f"{tl.c['error_updating_progress'].format(e=e)}")
+        events.emit(events.EventType.ERROR, tl.c["error_updating_progress"].format(e=e))
         return False
-    
+
 async def get_remaining_time(username: str = None, json_filename='current_views.json', get_type: int = 1) -> int:
     try:
         with open(json_filename, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        
+
         for item in data['data']['planned']:
-            # Получение для general (type=2)
             if get_type == 2 and item.get('type') == 2:
                 remaining_minutes = item.get('required_units', 0)
                 return int(remaining_minutes * 60)
-            
-            # Получение для конкретного стримера (type=1)
+
             elif get_type == 1 and item.get('type') == 1 and 'usernames' in item and username in item['usernames']:
                 remaining_minutes = item.get('required_units', 0)
                 return int(remaining_minutes * 60)
-        
-        # Если стример не найден (type=1), получаем время из general (type=2)
+
         if get_type == 1:
-            print(f"{tl.c['streamer_notfound_in_json_get'].format(username=username)}")
-            # Await the recursive async call so we return an int, not a coroutine
+            events.emit(events.EventType.WARNING, tl.c["streamer_notfound_in_json_get"].format(username=username))
             return await get_remaining_time(username, json_filename, get_type=2)
         else:
-            print(f"{tl.c['general_type_2_notfound_in_json']}")
+            events.emit(events.EventType.ERROR, tl.c["general_type_2_notfound_in_json"])
             return 0
-        
+
     except Exception as e:
-        print(f"{tl.c['error_getting_progress'].format(e=e)}")
+        events.emit(events.EventType.ERROR, tl.c["error_getting_progress"].format(e=e))
         return 0
