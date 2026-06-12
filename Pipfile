@@ -1,0 +1,13 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+curl-cffi = "==0.13.0"
+textual = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.14"

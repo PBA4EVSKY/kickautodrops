@@ -68,48 +68,105 @@ class StreamerPanel(Container):
         ws.update(f"⚡{self.ws_state} ♡{count}")
 
 
-class ProgressPanel(Container):
-    """Drop progress: per-streamer progress bars, claimed/pending/ready counts."""
+def _render_bar(pct: float, width: int = 20) -> str:
+    """Render a fixed-width ASCII progress bar for a 0..1 fraction."""
+    pct = max(0.0, min(1.0, pct))
+    filled = int(width * pct)
+    return "█" * filled + "░" * (width - filled)
 
-    progress_text: reactive[str] = reactive("No progress data")
-    claimed_count: reactive[int] = reactive(0)
-    pending_count: reactive[int] = reactive(0)
-    ready_count: reactive[int] = reactive(0)
+
+def _format_eta(remaining_minutes: float) -> str:
+    """Format a minutes value as a compact h/m ETA string."""
+    total = max(0, int(round(remaining_minutes)))
+    if total <= 0:
+        return "0m"
+    h, m = divmod(total, 60)
+    if h and m:
+        return f"{h}h {m:02d}m"
+    if h:
+        return f"{h}h"
+    return f"{m}m"
+
+
+class ProgressPanel(Container):
+    """Drop progress split into two blocks: total across all drops, and the
+    current drop being farmed.  Each block shows a bar and an ETA."""
+
+    # -- Total (all planned drops) --
+    total_drops: reactive[int] = reactive(0)
+    claimed_drops: reactive[int] = reactive(0)
+    total_eta_minutes: reactive[float] = reactive(0.0)
+
+    # -- Current drop --
+    current_label: reactive[str] = reactive("—")
+    current_remaining: reactive[float] = reactive(0.0)
+    current_total: reactive[float] = reactive(0.0)
+    has_current: reactive[bool] = reactive(False)
 
     def compose(self) -> ComposeResult:
         yield Label("DROP PROGRESS", classes="panel-title")
-        yield Static("No progress data", id="progress-bar")
-        yield Static("✓ claimed: 0  ⏳ pending: 0  🎁 ready: 0", id="progress-counts")
+        yield Static("", id="total-label")
+        yield Static("", id="total-bar")
+        yield Static("", id="current-label")
+        yield Static("", id="current-bar")
 
-    def watch_progress_text(self, text: str) -> None:
-        self.query_one("#progress-bar", Static).update(text)
+    def on_mount(self) -> None:
+        self._render_total()
+        self._render_current()
 
-    def watch_claimed_count(self, _count: int) -> None:
-        self._update_counts()
+    # -- Total block ------------------------------------------------
+    def watch_total_drops(self, _v: int) -> None:
+        self._render_total()
 
-    def watch_pending_count(self, _count: int) -> None:
-        self._update_counts()
+    def watch_claimed_drops(self, _v: int) -> None:
+        self._render_total()
 
-    def watch_ready_count(self, _count: int) -> None:
-        self._update_counts()
+    def watch_total_eta_minutes(self, _v: float) -> None:
+        self._render_total()
 
-    def _update_counts(self) -> None:
-        self.query_one("#progress-counts", Static).update(
-            f"✓ claimed: {self.claimed_count}  "
-            f"⏳ pending: {self.pending_count}  "
-            f"🎁 ready: {self.ready_count}"
+    def _render_total(self) -> None:
+        try:
+            label = self.query_one("#total-label", Static)
+            bar = self.query_one("#total-bar", Static)
+        except Exception:
+            return
+        total = self.total_drops
+        claimed = self.claimed_drops
+        pct = (claimed / total) if total > 0 else 0.0
+        label.update(f"TOTAL  {claimed}/{total} claimed")
+        bar.update(f"{_render_bar(pct)}  ⏳ {_format_eta(self.total_eta_minutes)} left")
+
+    # -- Current block ----------------------------------------------
+    def watch_current_label(self, _v: str) -> None:
+        self._render_current()
+
+    def watch_current_remaining(self, _v: float) -> None:
+        self._render_current()
+
+    def watch_current_total(self, _v: float) -> None:
+        self._render_current()
+
+    def watch_has_current(self, _v: bool) -> None:
+        self._render_current()
+
+    def _render_current(self) -> None:
+        try:
+            label = self.query_one("#current-label", Static)
+            bar = self.query_one("#current-bar", Static)
+        except Exception:
+            return
+        if not self.has_current:
+            label.update("CURRENT  —")
+            bar.update(f"{_render_bar(0.0)}  idle")
+            return
+        total = self.current_total
+        remaining = self.current_remaining
+        pct = (1.0 - remaining / total) if total > 0 else 1.0
+        label.update(f"CURRENT  {self.current_label}")
+        bar.update(
+            f"{_render_bar(pct)}  {int(max(0.0, min(1.0, pct)) * 100)}%  "
+            f"⏳ {_format_eta(remaining)} left"
         )
-
-    def render_progress_bar(self, remaining_minutes: float, total_minutes: float) -> str:
-        """Render an ASCII progress bar."""
-        if total_minutes <= 0:
-            return "complete"
-        pct = max(0.0, min(1.0, 1.0 - (remaining_minutes / total_minutes)))
-        bar_width = 20
-        filled = int(bar_width * pct)
-        empty = bar_width - filled
-        bar = "█" * filled + "░" * empty
-        return f"{bar} {int(pct * 100)}%  {int(remaining_minutes)}m left"
 
 
 class EventLog(RichLog):

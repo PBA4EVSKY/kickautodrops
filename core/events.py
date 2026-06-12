@@ -29,6 +29,7 @@ class Event:
 
 Subscriber = Callable[["Event"], Awaitable[None]]
 _subscribers: list[Subscriber] = []
+_pending_tasks: set[asyncio.Task] = set()
 
 
 def subscribe(callback: Subscriber) -> None:
@@ -43,6 +44,14 @@ def unsubscribe(callback: Subscriber) -> None:
         _subscribers.remove(callback)
 
 
+async def _run_subscriber(cb: Subscriber, event: "Event") -> None:
+    """Invoke a subscriber, surfacing failures instead of swallowing them."""
+    try:
+        await cb(event)
+    except Exception as exc:  # noqa: BLE001 - last-resort guard for one bad subscriber
+        print(f"[EVENT-DISPATCH-ERROR] {cb!r}: {exc}")
+
+
 def emit(event_type: EventType, message: str, data: dict | None = None) -> None:
     """Emit an event to all subscribers. Safe to call from sync or async context.
 
@@ -55,6 +64,10 @@ def emit(event_type: EventType, message: str, data: dict | None = None) -> None:
     try:
         loop = asyncio.get_running_loop()
         for cb in _subscribers:
-            loop.create_task(cb(event))
+            # Keep a strong reference until the task finishes; otherwise the
+            # event loop may garbage-collect it mid-flight (see asyncio docs).
+            task = loop.create_task(_run_subscriber(cb, event))
+            _pending_tasks.add(task)
+            task.add_done_callback(_pending_tasks.discard)
     except RuntimeError:
         print(f"[{event_type.name}] {message}")

@@ -25,15 +25,32 @@ Every 10 seconds, the application simulates watching a stream by fetching stream
 6. Place all contents into the "cookies.txt" file next to the executable python script.
 7. Run from terminal/command prompt
 
-### 3: Build from Source
+### 2: Run from Source (no build required)
+
+The app runs directly as a plain Python script — no PyInstaller build needed.
 
 ```
 # Clone the repository
 git clone https://github.com/PBA4EVSKY/kickautodrops.git
-
-# Navigate to the directory
 cd kickautodrops
 
+# Option A: pipenv (recommended)
+pip install pipenv
+pipenv install
+pipenv run python index.py
+
+# Option B: plain pip / venv
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python index.py
+```
+
+Export your kick.com cookies (see step 4–5 above) into a `cookies.txt` file next to `index.py` before running.
+
+### 3: Build a standalone executable (optional)
+
+```
 pip install pyinstaller
 pyinstaller index.spec
 ```

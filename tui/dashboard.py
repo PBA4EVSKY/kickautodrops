@@ -35,6 +35,7 @@ class DashboardScreen(Screen):
     start_time: float | None = None
     farm_task: asyncio.Task | None = None
     _active_username: str | None = None
+    _skip_username: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -50,6 +51,26 @@ class DashboardScreen(Screen):
         self._refresh_progress()
         events.subscribe(self._on_event)
         self.set_interval(1, self._update_elapsed)
+        # Reconcile local claim flags with Kick's servers on launch, so the
+        # panels reflect reality instead of a stale current_views.json.
+        self._sync_on_startup()
+
+    @work(exclusive=False)
+    async def _sync_on_startup(self) -> None:
+        """Rebuild current_views.json from the server and refresh the panels.
+
+        Fetches /campaigns to rebuild the reward-item schema, then syncs
+        /progress to overlay claim flags and cumulative watch counters, so the
+        panels reflect Kick's ground truth instead of a stale local file.
+        """
+        events.emit(events.EventType.INFO, "Syncing drop status with Kick…")
+        try:
+            campaigns = kick.get_all_campaigns()
+            formatter.convert_drops_json(campaigns)
+            await view_controller.check_campaigns_claim_status()
+            self._refresh_progress(self._active_username)
+        except Exception as e:  # missing cookies, network, etc. — non-fatal
+            events.emit(events.EventType.ERROR, f"Startup sync failed: {e}")
 
     def on_unmount(self) -> None:
         """Unsubscribe when screen unmounts."""
@@ -80,10 +101,13 @@ class DashboardScreen(Screen):
             self._refresh_progress(self._active_username)
 
     def _refresh_progress(self, username: str | None = None) -> None:
-        """Reload progress from current_views.json and update panel.
+        """Recompute both progress blocks from current_views.json.
 
-        When *username* is given, the progress bar targets that streamer's
-        remaining time.  Otherwise the bar shows the first pending item.
+        TOTAL counts claimed rewards and shows the real time-to-finish-all:
+        ``max(sum of streamer remaining, general remaining)`` -- streamer drops
+        are watched in turn while general drops fill concurrently, so the two do
+        not add.  CURRENT shows the active campaign's remaining watch time,
+        ``max(unclaimed tier) - progress_units``.
         """
         if not os.path.exists("current_views.json"):
             return
@@ -92,30 +116,54 @@ class DashboardScreen(Screen):
             with open("current_views.json", "r") as f:
                 data = json.load(f)
             planned = data.get("data", {}).get("planned", [])
-            claimed = sum(1 for item in planned if item.get("claim") == 1)
-            pending = sum(1 for item in planned if item.get("claim") == 0)
-            progress.claimed_count = claimed
-            progress.pending_count = pending
-            progress.ready_count = 0
 
-            # Build progress bar for the active streamer, or first pending
-            if username:
-                for item in planned:
-                    if item.get("type") == 1 and item.get("usernames") and username in item["usernames"]:
-                        remaining = item.get("required_units", 0)
-                        if remaining > 0:
-                            total = remaining * 1.25
-                            progress.progress_text = progress.render_progress_bar(remaining, total)
-                            progress.pending_count = 1  # show single streamer progress
-                        break
-            else:
-                for item in planned:
-                    if item.get("claim") == 0:
-                        remaining = item.get("required_units", 0)
-                        if remaining > 0:
-                            total = remaining * 1.25
-                            progress.progress_text = progress.render_progress_bar(remaining, total)
+            # -- TOTAL: every reward, with the concurrent max-model ETA ---
+            progress.total_drops = len(planned)
+            progress.claimed_drops = sum(1 for i in planned if i.get("claim") == 1)
+            streamer_rem, general_rem = formatter.aggregate_remaining(planned)
+            progress.total_eta_minutes = max(streamer_rem, general_rem)
+
+            # -- CURRENT: the campaign being farmed right now -------------
+            # Mode-gated and only while farming: streamer mode shows the active
+            # streamer's campaign, general mode the first unfinished general
+            # campaign.  Idle/between-streamers => no current drop.
+            username = username or self._active_username
+            mode = self.query_one("#mode-panel", ModePanel).current_mode
+            groups = formatter._campaign_groups(planned)
+            items = None
+            label = "—"
+            if self.farming:
+                if mode == "streamer" and username:
+                    for group in groups.values():
+                        head = group[0]
+                        if (
+                            head.get("type") == 1
+                            and username in (head.get("usernames") or [])
+                            and not all(i.get("claim") == 1 for i in group)
+                        ):
+                            items = group
+                            label = username
                             break
+                elif mode == "general":
+                    for group in groups.values():
+                        head = group[0]
+                        if head.get("type") == 2 and formatter.campaign_remaining_minutes(group) > 0:
+                            items = group
+                            label = "General drop"
+                            break
+
+            if items is None:
+                progress.has_current = False
+                return
+
+            # Baseline = highest tier in the campaign; progress comes straight
+            # from the server's cumulative counter, so the bar needs no guesswork.
+            baseline = max(float(i.get("total_units", 0) or 0) for i in items)
+            remaining = formatter.campaign_remaining_minutes(items)
+            progress.current_label = label
+            progress.current_total = baseline
+            progress.current_remaining = remaining
+            progress.has_current = True
         except Exception:
             pass
 
@@ -161,6 +209,9 @@ class DashboardScreen(Screen):
     def action_next_streamer(self) -> None:
         """Move to the next streamer in the campaign list."""
         if self.farming:
+            # Skip the currently-active streamer on the next scan so we
+            # actually advance instead of re-selecting the same one.
+            self._skip_username = self._active_username
             self._stop_farming()
         events.emit(events.EventType.INFO, "Moving to next streamer...")
         # Will pick up next streamer on restart
@@ -236,6 +287,11 @@ class DashboardScreen(Screen):
                     events.emit(events.EventType.INFO, tl.c["streamer_time_skip"].format(username=username))
                     continue
 
+                # Honor a one-shot "next streamer" skip request.
+                if self._skip_username and username == self._skip_username:
+                    self._skip_username = None
+                    continue
+
                 remaining = await formatter.get_remaining_time(username)
                 if remaining <= 0:
                     events.emit(events.EventType.INFO, tl.c["streamer_time_skip"].format(username=username))
@@ -259,6 +315,11 @@ class DashboardScreen(Screen):
 
                     if not self.farming:
                         break
+
+                    # Watch finished for this streamer; clear the active marker
+                    # so background events don't keep showing a stale "current"
+                    # drop while we scan for the next streamer.
+                    self._active_username = None
 
                     if stream_ended:
                         streamer_panel.is_live = False

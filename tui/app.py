@@ -44,7 +44,7 @@ class KickAutoDropsApp(App):
     }
 
     #progress-panel {
-        width: 35;
+        width: 40;
     }
 
     #streamer-name {
@@ -56,12 +56,17 @@ class KickAutoDropsApp(App):
         color: $success;
     }
 
-    #progress-bar {
+    #total-label, #current-label {
+        text-style: bold;
+        color: $text-muted;
+    }
+
+    #total-bar {
         color: $secondary;
     }
 
-    #progress-counts {
-        padding-top: 1;
+    #current-bar {
+        color: $accent;
     }
 
     Footer {
